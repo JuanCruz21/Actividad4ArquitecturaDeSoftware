@@ -1,0 +1,26 @@
+# Python / uv
+backend/.venv/
+backend/__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Datos y evidencias generadas en tiempo de ejecución
+backend/data/*
+!backend/data/README.md
+backend/informes/*
+!backend/informes/README.md
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/tsconfig.tsbuildinfo
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

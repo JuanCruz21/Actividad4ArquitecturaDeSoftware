@@ -1,0 +1,8 @@
+.venv/
+data/*
+!data/README.md
+informes/*
+!informes/README.md
+__pycache__/
+.pytest_cache/
+.ruff_cache/

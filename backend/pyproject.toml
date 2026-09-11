@@ -1,0 +1,42 @@
+[project]
+name = "labcloud-distributed"
+version = "1.0.0"
+description = "Prototipo de arquitectura distribuida para LabCloud S.A.S. (Actividad 4 - Arquitectura de Software)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy>=2.0.36",
+    "pydantic>=2.9.0",
+    "email-validator>=2.2.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.27.2",
+    "python-multipart>=0.0.12",
+    "pyjwt>=2.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+]
+
+[tool.uv]
+# LabCloud es una aplicación, no una librería: uv instala solo las dependencias
+# y los servicios se ejecutan con `uv run python -m labcloud <comando>`.
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# La aplicación no se instala como paquete: la raíz del backend entra al path.
+pythonpath = ["."]
+asyncio_mode = "auto"
