@@ -7,7 +7,11 @@ puertos ni las direcciones de los servicios internos: solo habla con el Gateway.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+
+#: Margen amplio para las rutas que ejecutan pruebas de carga.
+TIMEOUT_PRUEBAS = float(os.getenv("LABCLOUD_TIMEOUT_PRUEBAS", 900.0))
 
 
 @dataclass(frozen=True)
@@ -17,6 +21,10 @@ class Ruta:
     prefijo_interno: str
     publico: bool = False
     descripcion: str = ""
+    #: Tiempo de espera propio, en segundos. Las rutas que ejecutan pruebas de
+    #: carga trabajan mucho más que una consulta normal, así que no pueden
+    #: compartir el tiempo de espera general (`TIMEOUT_INTERNO`).
+    timeout: float | None = None
 
 
 RUTAS: tuple[Ruta, ...] = (
@@ -36,7 +44,14 @@ RUTAS: tuple[Ruta, ...] = (
         "/concurrencia",
         descripcion="Configuración y estado del pool de hilos",
     ),
-    Ruta("/api/pruebas", "solicitudes", "/pruebas", descripcion="Pruebas de carga y comparativas"),
+    Ruta(
+        "/api/pruebas",
+        "solicitudes",
+        "/pruebas",
+        descripcion="Pruebas de carga y comparativas",
+        # Una comparativa de varias configuraciones puede tardar minutos.
+        timeout=TIMEOUT_PRUEBAS,
+    ),
     Ruta("/api/resultados", "resultados", "/resultados", descripcion="Resultados de análisis"),
     Ruta(
         "/api/eventos",

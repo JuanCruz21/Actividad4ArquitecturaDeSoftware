@@ -200,32 +200,91 @@ evidencia y guarda un informe en `backend/informes/`.
 
 ### Resultado observado
 
-Medición con 24 solicitudes y un análisis simulado de 0,25 s por muestra
-(modo *pool aislado*), en un equipo de desarrollo:
+Medición con **64 solicitudes por configuración** y un análisis simulado de
+0,2 s por muestra, en un equipo de 8 núcleos lógicos. El procesamiento
+estrictamente secuencial tomaría 12,8 s.
 
-| Hilos | Tiempo total | Solicitudes/s | Latencia media | Espera en cola | Aceleración |
+La comparativa se ejecuta en dos modos, y la diferencia entre ambos es la parte
+interesante del resultado.
+
+#### Modo *pool aislado*
+
+Cada tarea ejecuta únicamente el análisis. Aísla el comportamiento de la
+concurrencia, sin el costo de la red ni de los servicios remotos.
+
+| Hilos | Tiempo total | Solicitudes/s | Latencia media | Espera en cola | Aceleración | Eficiencia por hilo |
+|---|---|---|---|---|---|---|
+| 1 | 13,057 s | 4,90 | 6626 ms | 6422 ms | x0,98 | 0,98 |
+| 2 | 6,632 s | 9,65 | 3415 ms | 3209 ms | x1,93 | 0,97 |
+| 4 | 3,297 s | 19,41 | 1751 ms | 1545 ms | x3,88 | 0,97 |
+| 8 | 1,665 s | 38,44 | 931 ms | 724 ms | x7,69 | 0,96 |
+| 16 | 0,835 s | 76,67 | 515 ms | 309 ms | x15,33 | 0,96 |
+| 32 | 0,420 s | 152,24 | 307 ms | 102 ms | x30,45 | 0,95 |
+| 64 | 0,219 s | 291,76 | 205 ms | 0,1 ms | x58,35 | 0,91 |
+
+#### Modo *flujo distribuido completo*
+
+Cada tarea recorre el sistema real: el Mediator actualiza la muestra, registra
+el resultado en el Servicio de Resultados y este publica el evento.
+
+| Hilos | Tiempo total | Solicitudes/s | Latencia media | Aceleración | Eficiencia por hilo |
 |---|---|---|---|---|---|
-| 1 | 6,158 s | 3,90 | 3197 ms | 2941 ms | x0,97 |
-| 2 | 3,084 s | 7,78 | 1665 ms | 1409 ms | x1,95 |
-| 4 | 1,545 s | 15,53 | 901 ms | 644 ms | x3,88 |
-| 8 | 0,779 s | 30,81 | 514 ms | 256 ms | x7,70 |
+| 1 | 13,910 s | 4,60 | 7016 ms | x0,92 | 0,92 |
+| 2 | 6,939 s | 9,22 | 3576 ms | x1,84 | 0,92 |
+| 4 | 3,478 s | 18,40 | 1856 ms | x3,68 | 0,92 |
+| 8 | 1,749 s | 36,60 | 979 ms | x7,32 | 0,92 |
+| 16 | 0,939 s | 68,16 | 579 ms | x13,63 | 0,85 |
+| 32 | 0,547 s | 116,88 | 397 ms | x23,38 | 0,73 |
+| 64 | 0,324 s | 197,39 | 271 ms | x39,48 | **0,62** |
 
-**Lectura.** El tiempo se reduce de forma casi proporcional al número de hilos
-porque la operación simulada libera el GIL —igual que una operación de entrada y
-salida o una llamada de red reales—. Con esta carga el sistema todavía tiene
-margen: el punto de saturación aparece cuando la cantidad de hilos supera
-claramente los recursos disponibles, momento en que la aceleración deja de
-crecer y la latencia media empieza a subir por la competencia entre hilos.
+### Lectura de los resultados
 
-Para observar ese punto basta con ampliar la comparativa (por ejemplo,
-`1,2,4,8,16,32,64`) desde la página *Laboratorio de hilos*.
+**El tiempo total no basta para detectar la saturación.** En los dos modos el
+tiempo sigue bajando hasta 64 hilos, así que quien mire solo esa columna
+concluiría que conviene seguir añadiendo hilos indefinidamente. La señal real
+está en la **eficiencia por hilo** —la aceleración obtenida dividida entre la
+cantidad de hilos—, que mide cuánto aporta cada hilo adicional.
+
+**1. Con el pool aislado la eficiencia apenas cae (0,98 → 0,91).** El resultado
+puede sorprender, porque 64 hilos superan con creces los 8 núcleos del equipo.
+La explicación es que el análisis simulado espera con `time.sleep`, que libera
+el GIL: los hilos no compiten por el procesador, esperan en paralelo. Es
+exactamente el comportamiento de una operación de entrada y salida o de una
+llamada de red, que es el tipo de trabajo predominante en este sistema. La
+conclusión es que **la concurrencia por hilos es la herramienta correcta para
+esta carga**, y que la cantidad de núcleos no es el límite.
+
+**2. Con el flujo distribuido la eficiencia se desploma (0,92 → 0,62).** Aquí
+cada tarea sí sale a la red. Hasta 8 hilos la eficiencia se mantiene en 0,92;
+a partir de 16 empieza a caer y en 64 cada hilo aporta apenas el 62 % de lo que
+aportaba el primero. Duplicar de 32 a 64 hilos multiplicó el throughput por
+1,69 en lugar de por 2.
+
+**3. Dónde está el cuello de botella.** La diferencia entre ambas tablas lo
+localiza sin ambigüedad: no está en el pool —que en modo aislado escala casi
+perfecto con la misma cantidad de hilos— sino **aguas abajo**, en el Servicio de
+Resultados, que con 64 hilos recibe 64 peticiones concurrentes y debe además
+persistir cada resultado y encolar su evento.
+
+**Consecuencia para la arquitectura.** Pasados los 16 hilos, la vía para seguir
+escalando no es agrandar el pool del Nodo 2, sino **replicar el servicio
+saturado**. Esa es precisamente la capacidad que da haber separado los
+componentes en procesos independientes (RNF04): se puede aumentar la capacidad
+del Servicio de Resultados sin tocar el resto del sistema. Un aumento
+indiscriminado de hilos en el nodo de procesamiento, en cambio, solo traslada la
+congestión y consume memoria.
+
+Ambas comparativas se reproducen desde la página *Laboratorio de hilos* o con
+`uv run python scripts/demostracion.py`, y quedan registradas en la tabla
+`pruebas_carga` para comparar el comportamiento antes y después de un ajuste.
 
 ### Cuellos de botella identificados
 
 | Punto | Observación | Mitigación aplicada o propuesta |
 |---|---|---|
-| Pool de Solicitudes | Es el recurso que limita el throughput; con pocos hilos la espera en cola domina la latencia. | Tamaño configurable en caliente; en producción, réplicas del servicio. |
-| API Gateway | Único punto de entrada: concentra todo el tráfico. | Cliente asíncrono y métricas por servicio; en producción, varias instancias tras un balanceador. |
+| Pool de Solicitudes | Con pocos hilos la espera en cola domina la latencia (6,4 s con un solo hilo). Deja de ser el límite a partir de 16 hilos. | Tamaño configurable en caliente. |
+| Servicio de Resultados | Es el verdadero cuello de botella bajo carga alta: la eficiencia por hilo cae a 0,62 con 64 hilos concurrentes. | Réplicas del servicio tras un balanceador; es un proceso independiente, así que se escala solo. |
+| API Gateway | Único punto de entrada: concentra todo el tráfico. | Cliente asíncrono y métricas por servicio; tiempo de espera propio para las rutas de pruebas; en producción, varias instancias tras un balanceador. |
 | Escritura en SQLite | Una sola escritura a la vez por base. | Modo WAL, transacciones cortas y una base por servicio. En producción, un motor cliente-servidor. |
 | Entrega de eventos | Un observador lento retrasaría al productor si la entrega fuera síncrona. | Publicación en cola con hilos despachadores; el productor nunca espera. |
 

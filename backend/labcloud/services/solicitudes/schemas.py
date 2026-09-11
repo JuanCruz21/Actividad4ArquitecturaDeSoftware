@@ -67,10 +67,16 @@ class PruebaCargaPeticion(BaseModel):
 
 
 class ComparativaPeticion(BaseModel):
-    """Ejecuta la misma carga con varias configuraciones de hilos."""
+    """Ejecuta la misma carga con varias configuraciones de hilos.
 
-    solicitudes: int = Field(default=20, ge=1, le=300)
-    configuraciones: list[int] = Field(default=[1, 2, 4, 8], min_length=1, max_length=8)
+    La serie por defecto duplica los hilos hasta 64 para que la curva llegue al
+    punto en que agregar concurrencia deja de aportar (sección 8.5.4).
+    """
+
+    solicitudes: int = Field(default=64, ge=1, le=500)
+    configuraciones: list[int] = Field(
+        default=[1, 2, 4, 8, 16, 32, 64], min_length=1, max_length=10
+    )
     duracion_analisis_s: float | None = Field(default=None, ge=0.0, le=5.0)
     aislar_pool: bool = True
 

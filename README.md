@@ -98,7 +98,7 @@ uv run python -m labcloud iniciar --solo gateway solicitudes resultados
 | Página | Qué demuestra |
 |---|---|
 | **Panel de nodos** | Topología real: nodos, puertos, PID, hilos vivos y tráfico dirigido por el Gateway. |
-| **Laboratorio de hilos** | Cambio de la cantidad de hilos en caliente, pruebas de carga y comparativa de 1, 2, 4 y 8 hilos con gráfica. |
+| **Laboratorio de hilos** | Cambio de la cantidad de hilos en caliente, pruebas de carga y comparativa de 1 a 64 hilos con gráfica. |
 | **Solicitudes** | Creación individual o simultánea; muestra qué hilo atendió cada solicitud y cuánto esperó en cola. |
 | **Resultados** | Informes con sus valores y el hilo que los produjo. |
 | **Eventos y notificaciones** | Observadores suscritos, traza de entregas y **simulación de caída** del servicio secundario. |
@@ -121,20 +121,61 @@ informe en Markdown dentro de `backend/informes/`:
 1. **Distribución en nodos** — procesos, puertos, PID e hilos de cada servicio.
 2. **Flujo completo de una solicitud** — REST, hilo, evento y notificación.
 3. **Procesamiento concurrente** — 5 solicitudes con 3 hilos: dos esperan en cola.
-4. **Concurrencia y escalabilidad** — comparativa de 1, 2, 4 y 8 hilos.
+4. **Concurrencia y escalabilidad** — comparativa de 1 a 64 hilos.
 5. **Tolerancia a fallos** — con el Servicio de Notificaciones caído, la
    solicitud se procesa igual y el evento se entrega al recuperarse.
 
 ### Resultado de la comparativa
 
-24 solicitudes, análisis simulado de 0,25 s por muestra:
+64 solicitudes por configuración, análisis simulado de 0,2 s por muestra
+(procesamiento secuencial estimado: 12,8 s). Equipo de 8 núcleos lógicos.
 
-| Hilos | Tiempo total | Solicitudes/s | Espera en cola | Aceleración |
-|---|---|---|---|---|
-| 1 | 6,158 s | 3,90 | 2941 ms | x0,97 |
-| 2 | 3,084 s | 7,78 | 1409 ms | x1,95 |
-| 4 | 1,545 s | 15,53 | 644 ms | x3,88 |
-| 8 | 0,779 s | 30,81 | 256 ms | x7,70 |
+**Modo pool aislado** — solo el análisis, sin llamadas a otros servicios.
+Mide el comportamiento puro de la concurrencia:
+
+| Hilos | Tiempo total | Solicitudes/s | Latencia media | Espera en cola | Aceleración | Eficiencia por hilo |
+|---|---|---|---|---|---|---|
+| 1 | 13,057 s | 4,90 | 6626 ms | 6422 ms | x0,98 | 0,98 |
+| 2 | 6,632 s | 9,65 | 3415 ms | 3209 ms | x1,93 | 0,97 |
+| 4 | 3,297 s | 19,41 | 1751 ms | 1545 ms | x3,88 | 0,97 |
+| 8 | 1,665 s | 38,44 | 931 ms | 724 ms | x7,69 | 0,96 |
+| 16 | 0,835 s | 76,67 | 515 ms | 309 ms | x15,33 | 0,96 |
+| 32 | 0,420 s | 152,24 | 307 ms | 102 ms | x30,45 | 0,95 |
+| 64 | 0,219 s | 291,76 | 205 ms | 0,1 ms | x58,35 | 0,91 |
+
+**Modo flujo distribuido** — cada solicitud recorre el sistema completo a través
+del Mediator (Muestras → Resultados → evento → Notificaciones):
+
+| Hilos | Tiempo total | Solicitudes/s | Latencia media | Aceleración | Eficiencia por hilo |
+|---|---|---|---|---|---|
+| 1 | 13,910 s | 4,60 | 7016 ms | x0,92 | 0,92 |
+| 2 | 6,939 s | 9,22 | 3576 ms | x1,84 | 0,92 |
+| 4 | 3,478 s | 18,40 | 1856 ms | x3,68 | 0,92 |
+| 8 | 1,749 s | 36,60 | 979 ms | x7,32 | 0,92 |
+| 16 | 0,939 s | 68,16 | 579 ms | x13,63 | 0,85 |
+| 32 | 0,547 s | 116,88 | 397 ms | x23,38 | 0,73 |
+| 64 | 0,324 s | 197,39 | 271 ms | x39,48 | **0,62** |
+
+### Lectura de los resultados
+
+Mirar solo el tiempo total lleva a una conclusión equivocada: sigue bajando
+hasta 64 hilos en ambos modos. La señal del **rendimiento decreciente** está en
+la eficiencia por hilo.
+
+* **Con el pool aislado la eficiencia apenas cae** (0,98 → 0,91). El análisis
+  simulado espera sin ocupar el procesador —igual que una operación de entrada y
+  salida o una llamada de red reales—, así que los hilos avanzan de verdad en
+  paralelo aunque superen los 8 núcleos del equipo. La concurrencia por hilos es
+  la herramienta adecuada para este tipo de trabajo.
+* **Con el flujo distribuido la eficiencia se desploma** (0,92 → 0,62). A partir
+  de 16 hilos, el cuello de botella deja de ser el pool y pasa a ser el
+  **Servicio de Resultados**, que recibe 64 peticiones concurrentes. Duplicar de
+  32 a 64 hilos solo multiplicó el throughput por 1,69 en lugar de por 2.
+
+La conclusión práctica es que, pasados los 16 hilos, el camino para seguir
+escalando no es agregar hilos al Nodo 2 sino **replicar el servicio saturado**,
+que es exactamente lo que permite haber separado los componentes en procesos
+independientes (RNF04).
 
 ---
 
@@ -189,6 +230,7 @@ Variables de entorno del backend (todas tienen valor por defecto):
 | `LABCLOUD_DURACION_ANALISIS` | `0.35` | Duración simulada de un análisis, en segundos. |
 | `LABCLOUD_AUTH_MODO` | `escritura` | Política del Gateway: `escritura`, `siempre` o `nunca`. |
 | `LABCLOUD_TIMEOUT` | `15.0` | Tiempo de espera entre servicios, en segundos. |
+| `LABCLOUD_TIMEOUT_PRUEBAS` | `900.0` | Tiempo de espera del Gateway para las rutas de pruebas de carga. |
 | `LABCLOUD_REINTENTOS` | `2` | Reintentos de una llamada REST fallida. |
 | `LABCLOUD_DATA_DIR` | `backend/data` | Carpeta de las bases de datos. |
 | `LABCLOUD_URL_<SERVICIO>` | — | Dirección de un servicio en otra máquina. |

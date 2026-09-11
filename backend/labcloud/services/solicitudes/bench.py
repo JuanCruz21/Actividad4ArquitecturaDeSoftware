@@ -198,27 +198,65 @@ def ejecutar_comparativa(
 
 
 def _interpretar(corridas: list[dict[str, Any]]) -> str:
-    """Genera una lectura en texto de la comparativa, para la documentación."""
+    """Genera una lectura en texto de la comparativa, para la documentación.
+
+    Además del mejor tiempo, informa sobre la **eficiencia por hilo**: el tiempo
+    total puede seguir bajando mientras cada hilo aporta cada vez menos. Ese es
+    el rendimiento decreciente que describe la sección 8.5.4 del diseño, y no se
+    ve mirando solo el tiempo.
+    """
     if len(corridas) < 2:
         return "Se requiere más de una configuración para comparar."
 
     mejor = min(corridas, key=lambda c: c["tiempo_total_s"])
-    ultima = corridas[-1]
+    primera, ultima = corridas[0], corridas[-1]
     texto = (
-        f"Con {corridas[0]['solicitudes']} solicitudes, el mejor tiempo se obtuvo con "
+        f"Con {primera['solicitudes']} solicitudes, el mejor tiempo se obtuvo con "
         f"{mejor['hilos']} hilo(s): {mejor['tiempo_total_s']} s "
         f"({mejor['throughput_rps']} solicitudes/s)."
     )
+
     if mejor is not ultima and ultima["hilos"] > mejor["hilos"]:
         texto += (
-            f" Aumentar a {ultima['hilos']} hilos no mejoró el tiempo "
-            f"({ultima['tiempo_total_s']} s), lo que evidencia que el beneficio de la "
-            "concurrencia se estabiliza y el exceso de hilos solo añade competencia por "
-            "los recursos."
+            f" Pasar a {ultima['hilos']} hilos no mejoró el tiempo "
+            f"({ultima['tiempo_total_s']} s): a partir de ese punto el exceso de hilos "
+            "solo añade competencia por los recursos."
+        )
+        return texto
+
+    # El tiempo siguió bajando: hay que mirar cuánto aporta cada hilo adicional.
+    eficiencia_inicial = primera["detalle"]["eficiencia_por_hilo"]
+    eficiencia_final = ultima["detalle"]["eficiencia_por_hilo"]
+    caida = (
+        round((1 - eficiencia_final / eficiencia_inicial) * 100)
+        if eficiencia_inicial
+        else 0
+    )
+
+    if caida >= 15:
+        texto += (
+            f" El tiempo total siguió bajando, pero la eficiencia por hilo cayó de "
+            f"{eficiencia_inicial} a {eficiencia_final} ({caida} % menos): cada hilo "
+            "adicional aporta cada vez menos, que es el rendimiento decreciente "
+            "esperado al sobrepasar la capacidad real de procesamiento."
         )
     else:
         texto += (
-            " El tiempo siguió mejorando al aumentar los hilos, por lo que el sistema aún "
-            "tiene margen de concurrencia con esta carga."
+            f" La eficiencia por hilo se mantuvo alta ({eficiencia_inicial} → "
+            f"{eficiencia_final}), así que con esta carga el sistema todavía tiene "
+            "margen de concurrencia."
         )
+
+    # Señal adicional: cuánto rindió el último salto frente al anterior.
+    if len(corridas) >= 3:
+        anterior = corridas[-2]
+        if anterior["tiempo_total_s"]:
+            ganancia = ultima["throughput_rps"] / anterior["throughput_rps"]
+            factor = ultima["hilos"] / anterior["hilos"]
+            if ganancia < factor * 0.8:
+                texto += (
+                    f" De hecho, duplicar de {anterior['hilos']} a {ultima['hilos']} hilos "
+                    f"solo multiplicó el throughput por {round(ganancia, 2)} en lugar de "
+                    f"por {round(factor, 2)}."
+                )
     return texto

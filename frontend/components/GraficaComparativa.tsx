@@ -13,7 +13,9 @@ import type { CorridaPrueba } from "@/lib/tipos";
 export function GraficaComparativa({ corridas }: { corridas: CorridaPrueba[] }) {
   if (!corridas.length) return null;
 
-  const ancho = 640;
+  // El lienzo crece con la cantidad de configuraciones para que las barras y
+  // sus etiquetas no se aprieten cuando la serie llega hasta 64 hilos.
+  const ancho = Math.max(640, corridas.length * 92);
   const alto = 240;
   const margen = { arriba: 18, derecha: 46, abajo: 34, izquierda: 46 };
   const areaAncho = ancho - margen.izquierda - margen.derecha;
@@ -38,7 +40,8 @@ export function GraficaComparativa({ corridas }: { corridas: CorridaPrueba[] }) 
     <div className="-mx-5 overflow-x-auto px-5">
       <svg
         viewBox={`0 0 ${ancho} ${alto}`}
-        className="h-auto w-full min-w-[560px]"
+        className="h-auto w-full"
+        style={{ minWidth: Math.min(ancho, 560) }}
         role="img"
         aria-label="Comparación de tiempo total y aceleración según la cantidad de hilos"
       >

@@ -224,6 +224,7 @@ async def reenviar(camino: str, request: Request) -> Response:
             params=request.query_params,
             contenido=await request.body(),
             encabezados=encabezados,
+            timeout=ruta.timeout,
         )
     except ServicioInalcanzable as exc:
         raise HTTPException(

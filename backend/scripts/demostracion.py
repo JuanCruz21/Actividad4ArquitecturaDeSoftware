@@ -6,7 +6,7 @@ pide evidenciar y deja un informe en Markdown con los resultados obtenidos:
   1. Estado de los nodos (distribución en procesos y puertos).
   2. Flujo completo de una solicitud (REST + hilos + eventos).
   3. Procesamiento concurrente: 5 solicitudes con 3 hilos.
-  4. Comparativa de 1, 2, 4 y 8 hilos (pruebas de concurrencia y escalabilidad).
+  4. Comparativa de 1 a 64 hilos (pruebas de concurrencia y escalabilidad).
   5. Tolerancia a fallos: caída del Servicio de Notificaciones.
 
 Uso (con los servicios arriba):
@@ -234,14 +234,15 @@ def main() -> int:
     )
 
     # --- 4. Comparativa de hilos -------------------------------------------
-    informe.titulo("4. Pruebas de concurrencia y escalabilidad (1, 2, 4 y 8 hilos)")
+    informe.titulo("4. Pruebas de concurrencia y escalabilidad (de 1 a 64 hilos)")
+    print("  (la serie completa tarda cerca de un minuto)")
     comparativa = cliente.post(
         "/api/pruebas/comparativa",
         headers=cabeceras,
         json={
-            "solicitudes": 24,
-            "configuraciones": [1, 2, 4, 8],
-            "duracion_analisis_s": 0.25,
+            "solicitudes": 64,
+            "configuraciones": [1, 2, 4, 8, 16, 32, 64],
+            "duracion_analisis_s": 0.2,
             "aislar_pool": True,
         },
     ).json()
@@ -254,6 +255,7 @@ def main() -> int:
             "p95 (ms)",
             "Espera (ms)",
             "Aceleración",
+            "Eficiencia/hilo",
         ],
         [
             [
@@ -264,6 +266,7 @@ def main() -> int:
                 c["latencia_p95_ms"],
                 c["espera_promedio_ms"],
                 f"x{c['detalle']['aceleracion']}",
+                c["detalle"]["eficiencia_por_hilo"],
             ]
             for c in comparativa["corridas"]
         ],

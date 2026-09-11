@@ -78,6 +78,7 @@ class ProxyServicio:
     def __init__(self, destino: str, estadisticas: EstadisticasProxy) -> None:
         self.destino = destino
         self._estadisticas = estadisticas
+        self._timeout = TIMEOUT_INTERNO
         self._cliente = httpx.AsyncClient(base_url=url_de(destino), timeout=TIMEOUT_INTERNO)
 
     async def cerrar(self) -> None:
@@ -91,8 +92,13 @@ class ProxyServicio:
         params: Any = None,
         contenido: bytes | None = None,
         encabezados: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> httpx.Response:
-        """Reenvía la petición al servicio real y devuelve su respuesta."""
+        """Reenvía la petición al servicio real y devuelve su respuesta.
+
+        ``timeout`` permite que una ruta concreta —por ejemplo una prueba de
+        carga— espere más que el resto sin relajar el límite general.
+        """
         inicio = time.perf_counter()
         try:
             respuesta = await self._cliente.request(
@@ -101,6 +107,7 @@ class ProxyServicio:
                 params=params,
                 content=contenido,
                 headers=encabezados,
+                timeout=timeout if timeout is not None else self._timeout,
             )
         except httpx.HTTPError as exc:
             ms = (time.perf_counter() - inicio) * 1000

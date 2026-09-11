@@ -70,7 +70,7 @@ el hilo continúa en segundo plano.
 | `PUT` | `/api/concurrencia` | Cambia la cantidad de hilos sin reiniciar el servicio. |
 | `GET` | `/api/concurrencia/mediciones` | Detalle por tarea: hilo, espera en cola y procesamiento. |
 | `POST` | `/api/pruebas/carga` | Lanza N solicitudes con una configuración de hilos. |
-| `POST` | `/api/pruebas/comparativa` | Repite la carga con varias configuraciones. |
+| `POST` | `/api/pruebas/comparativa` | Repite la carga con varias configuraciones (por defecto 1 a 64 hilos). |
 | `GET` | `/api/pruebas` | Historial persistente de las corridas. |
 
 ### Observer distribuido
@@ -97,10 +97,15 @@ curl -X PUT http://127.0.0.1:8000/api/concurrencia \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"hilos": 8}'
 
-# Comparar 1, 2, 4 y 8 hilos con 30 solicitudes
+# Comparar de 1 a 64 hilos con 64 solicitudes (valores por defecto)
 curl -X POST http://127.0.0.1:8000/api/pruebas/comparativa \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"solicitudes":30,"configuraciones":[1,2,4,8],"aislar_pool":true}'
+  -d '{"solicitudes":64,"configuraciones":[1,2,4,8,16,32,64],"duracion_analisis_s":0.2,"aislar_pool":true}'
+
+# La misma comparativa recorriendo el sistema distribuido completo
+curl -X POST http://127.0.0.1:8000/api/pruebas/comparativa \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"solicitudes":64,"configuraciones":[1,2,4,8,16,32,64],"duracion_analisis_s":0.2,"aislar_pool":false}'
 
 # Simular la caída del Servicio de Notificaciones
 curl -X PUT http://127.0.0.1:8000/api/simulacion/disponibilidad \

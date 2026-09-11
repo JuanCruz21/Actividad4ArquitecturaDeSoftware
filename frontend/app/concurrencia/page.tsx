@@ -33,7 +33,9 @@ import type {
   Medicion,
 } from "@/lib/tipos";
 
-const CONFIGURACIONES = "1,2,4,8";
+// Serie por defecto: duplica los hilos hasta 64 para que la curva alcance el
+// punto en que agregar concurrencia deja de aportar.
+const CONFIGURACIONES = "1,2,4,8,16,32,64";
 
 export default function LaboratorioHilos() {
   const { autenticado } = useSesion();
@@ -45,8 +47,8 @@ export default function LaboratorioHilos() {
   // `hilos` guarda lo que el usuario escribe; mientras no toque el campo se
   // muestra el tamaño real del pool que reporta el servicio.
   const [hilosEditados, setHilosEditados] = useState<number | null>(null);
-  const [solicitudes, setSolicitudes] = useState(20);
-  const [duracion, setDuracion] = useState(0.3);
+  const [solicitudes, setSolicitudes] = useState(64);
+  const [duracion, setDuracion] = useState(0.2);
   const [aislar, setAislar] = useState(true);
   const [configuraciones, setConfiguraciones] = useState(CONFIGURACIONES);
 
@@ -195,7 +197,7 @@ export default function LaboratorioHilos() {
               <input
                 type="number"
                 min={1}
-                max={300}
+                max={500}
                 value={solicitudes}
                 onChange={(e) => setSolicitudes(Number(e.target.value))}
                 className={claseEntrada}
@@ -241,12 +243,12 @@ export default function LaboratorioHilos() {
             <div className="border-t border-borde-suave pt-4">
               <Campo
                 etiqueta="Comparativa de hilos"
-                ayuda="Repite la misma carga con cada configuración"
+                ayuda="Repite la misma carga con cada configuración; la serie completa puede tardar cerca de un minuto"
               >
                 <input
                   value={configuraciones}
                   onChange={(e) => setConfiguraciones(e.target.value)}
-                  placeholder="1,2,4,8"
+                  placeholder="1,2,4,8,16,32,64"
                   className={claseEntrada}
                 />
               </Campo>
